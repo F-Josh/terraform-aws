@@ -214,5 +214,3 @@ resource "aws_instance" "private_instance" {
     Name = "private_instance"
   }
 }
-
-
