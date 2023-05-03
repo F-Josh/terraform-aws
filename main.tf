@@ -8,64 +8,52 @@
 
 ### provider block......
 provider "aws" {
-  region = "us-east-1"
-  profile =  "josh"
+  region  = "us-east-1"
+  profile = "josh"
+}
 
+locals {
+  vpc_cidr             = "10.0.0.0/16"
+  public_cidr          = ["10.0.1.0/24", "10.0.2.0/24"]
+  public_availability  = ["us-east-1a", "us-east-1b"]
+  private_cidr         = ["10.0.3.0/24", "10.0.4.0/24"]
+  private_availability = ["us-east-1c", "us-east-1d"]
+  ec2_subnets          = [aws_subnet.public_subnet[0].id, aws_subnet.private_subnet[0].id]
+  security_groups      = [aws_security_group.public_subnets_security.id, aws_security_group.private_subnets_security.id]
 }
 
 ## Create a VPC
 resource "aws_vpc" "main_vpc" {
-  cidr_block       = "10.0.0.0/16"
+  cidr_block       = local.vpc_cidr
   instance_tenancy = "default"
 
   tags = {
-    Name = "main_vpc"
+    Name = "${var.env_code} - main_vpc"
   }
 }
 
-## Create first public subnet for vpc
-resource "aws_subnet" "public_subnet_1" {
-  vpc_id     = aws_vpc.main_vpc.id
-  cidr_block = "10.0.1.0/24"
-  availability_zone = "us-east-1a"
+## Create 2 public subnets for the vpc
+resource "aws_subnet" "public_subnet" {
+  count                   = 2
+  vpc_id                  = aws_vpc.main_vpc.id
+  cidr_block              = local.public_cidr[count.index]
+  availability_zone       = local.public_availability[count.index]
   map_public_ip_on_launch = "true"
 
   tags = {
-    Name = "public_subnet_1"
+    Name = "${var.env_code} - public_subnet-${count.index + 1}"
   }
 }
 
-## create your second public subnet
-resource "aws_subnet" "public_subnet_2" {
-  vpc_id     = aws_vpc.main_vpc.id
-  cidr_block = "10.0.2.0/24"
-  availability_zone = "us-east-1b"
-  map_public_ip_on_launch = "true"
+## Create 2 private subnets
+resource "aws_subnet" "private_subnet" {
+  count             = 2
+  vpc_id            = aws_vpc.main_vpc.id
+  cidr_block        = local.private_cidr[count.index]
+  availability_zone = local.private_availability[count.index]
 
   tags = {
-    Name = "public_subnet_2"
-  }
-}
-
-## Create private subnet
-resource "aws_subnet" "private_subnet_1" {
-  vpc_id     = aws_vpc.main_vpc.id
-  cidr_block = "10.0.3.0/24"
-  availability_zone = "us-east-1c"
-
-  tags = {
-    Name = "private_subnet_1"
-  }
-}
-
-## Create second private subnet
-resource "aws_subnet" "private_subnet_2" {
-  vpc_id     = aws_vpc.main_vpc.id
-  cidr_block = "10.0.4.0/24"
-  availability_zone = "us-east-1d"
-
-  tags = {
-    Name = "private_subnet_2"
+    Name = "${var.env_code} - private_subnet-${count.index + 1}"
   }
 }
 
@@ -74,11 +62,11 @@ resource "aws_internet_gateway" "internet_gateway" {
   vpc_id = aws_vpc.main_vpc.id
 
   tags = {
-    Name = "internet_gateway"
+    Name = "${var.env_code} - internet_gateway"
   }
 }
 
-## Create 1 public Route tables and routes inside of it and target IGW
+## Create 1 public Route table and routes inside of it and target IGW
 resource "aws_route_table" "public_route_table" {
   vpc_id = aws_vpc.main_vpc.id
 
@@ -89,78 +77,55 @@ resource "aws_route_table" "public_route_table" {
   }
 
   tags = {
-    Name = "public_route_table"
+    Name = "${var.env_code} - public_route_table"
   }
 }
 
-## Assosciate our route table to our first public subnets
-resource "aws_route_table_association" "route_association_1" {
-  subnet_id      = aws_subnet.public_subnet_1.id
+## Assosciate our route table to our 2 public subnets
+resource "aws_route_table_association" "route_association" {
+  count          = 2
+  subnet_id      = aws_subnet.public_subnet[count.index].id
   route_table_id = aws_route_table.public_route_table.id
 }
 
-## Assosciate our route table to our second public subnets
-resource "aws_route_table_association" "route_association_2" {
-  subnet_id      = aws_subnet.public_subnet_2.id
-  route_table_id = aws_route_table.public_route_table.id
-}
-
-
-## Create a private Route table and routes inside of it and target the NATGW
-resource "aws_route_table" "private_route_table_1" {
+## Create 2 private Route tables and routes inside of it and target the NATGW
+resource "aws_route_table" "private_route_table" {
   vpc_id = aws_vpc.main_vpc.id
+  count  = 2
 
   ## Routes out to the internet
   route {
-    cidr_block = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gateway_1.id
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gateway[count.index].id
   }
 
   tags = {
-    Name = "private_route_table_1"
+    Name = "${var.env_code} - private_route_table-${count.index + 1}"
   }
 }
 
-## Create a second private Route table and routes inside and target the NATGW
-resource "aws_route_table" "private_route_table_2" {
-  vpc_id = aws_vpc.main_vpc.id
-
-  ## Routes out to the internet
-  route {
-    cidr_block = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat_gateway_2.id
-  }
-
-  tags = {
-    Name = "private_route_table_2"
-  }
-}
-
-## Assosciate our first private route table to our first private subnets
+## Assosciate our private subnets to our private route tables
 resource "aws_route_table_association" "private_route_association_1" {
-  subnet_id      = aws_subnet.private_subnet_1.id
-  route_table_id = aws_route_table.private_route_table_1.id
-}
-
-## Assosciate our second private route table to our second private subnets
-resource "aws_route_table_association" "private_route_association_2" {
-  subnet_id      = aws_subnet.private_subnet_2.id
-  route_table_id = aws_route_table.private_route_table_2.id
+  count          = 2
+  subnet_id      = aws_subnet.private_subnet[count.index].id
+  route_table_id = aws_route_table.private_route_table[count.index].id
 }
 
 ## Create the first Elastic IP EIP
-resource "aws_eip" "elastic_ip_1" {
+resource "aws_eip" "elastic_ip" {
   ##instance = aws_instance.web.id
-  vpc        = true
+  count = 2
+  vpc   = true
 }
 
-## Create the first NAT gateway and associate EIP to it
-resource "aws_nat_gateway" "nat_gateway_1" {
-  allocation_id = aws_eip.elastic_ip_1.id
-  subnet_id     = aws_subnet.public_subnet_1.id
+## Create the 2 NAT gateways and associate EIP to it
+resource "aws_nat_gateway" "nat_gateway" {
+  count         = 2
+  allocation_id = aws_eip.elastic_ip[count.index].id
+  subnet_id     = aws_subnet.public_subnet[count.index].id
 
   tags = {
-    Name = "nat_gateway_1"
+    Name = "${var.env_code} - nat_gateway-{count.index + 1}"
   }
 
   # To ensure proper ordering, it is recommended to add an explicit dependency
@@ -168,49 +133,16 @@ resource "aws_nat_gateway" "nat_gateway_1" {
   depends_on = [aws_internet_gateway.internet_gateway]
 }
 
-## Create the second EIP
-resource "aws_eip" "elastic_ip_2" {
-  ##instance = aws_instance.web.id
-  vpc      = true
-}
-
-## Create a second NAT gateway and associate EIP2 to it
-resource "aws_nat_gateway" "nat_gateway_2" {
-  allocation_id = aws_eip.elastic_ip_2.id
-  subnet_id     = aws_subnet.public_subnet_2.id
-
-  tags = {
-    Name = "nat_gateway_2"
-  }
-
-  # To ensure proper ordering, it is recommended to add an explicit dependency
-  # on the Internet Gateway for the VPC.
-  depends_on = [aws_internet_gateway.internet_gateway]
-}
-
-##
-#### Create 1 ec2 instance and host it in the public subnet
+#### Create 2 ec2 instances and host it in the public and private subnets
 resource "aws_instance" "public_instance" {
-  ami                     = "ami-007855ac798b5175e"
-  instance_type           = "t2.micro"
-  subnet_id               = aws_subnet.public_subnet_1.id
-  vpc_security_group_ids  = [aws_security_group.public_subnets_security.id]
-  key_name                = "My_September_Key"
-
-  tags = {
-    Name = "public_instance"
-  }
-}
-
-## Create 1  ec2 instance and host it in the private subnet
-resource "aws_instance" "private_instance" {
-  ami                     = "ami-007855ac798b5175e"
-  instance_type           = "t2.micro"
-  subnet_id               = aws_subnet.private_subnet_1.id
+  count                  = 2
+  ami                    = "ami-007855ac798b5175e"
+  instance_type          = "t2.micro"
+  subnet_id              = local.ec2_subnets[count.index]
+  vpc_security_group_ids = [local.security_groups[count.index]]
   key_name               = "My_September_Key"
-  vpc_security_group_ids = [aws_security_group.private_subnets_security.id]
 
   tags = {
-    Name = "private_instance"
+    Name = "${var.env_code} - ${var.instance_name[count.index]}-instance"
   }
 }
