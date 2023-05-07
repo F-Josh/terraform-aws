@@ -132,17 +132,3 @@ resource "aws_nat_gateway" "nat_gateway" {
   # on the Internet Gateway for the VPC.
   depends_on = [aws_internet_gateway.internet_gateway]
 }
-
-#### Create 2 ec2 instances and host it in the public and private subnets
-resource "aws_instance" "public_instance" {
-  count                  = 2
-  ami                    = "ami-007855ac798b5175e"
-  instance_type          = "t2.micro"
-  subnet_id              = local.ec2_subnets[count.index]
-  vpc_security_group_ids = [local.security_groups[count.index]]
-  key_name               = "My_September_Key"
-
-  tags = {
-    Name = "${var.env_code} - ${var.instance_name[count.index]}-instance"
-  }
-}
