@@ -35,7 +35,3 @@ resource "aws_instance" "public_instance" {
     Name = "${var.env_code} - ${var.instance_name[0]}-instance"
   }
 }
-
-
-
-  
