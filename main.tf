@@ -6,11 +6,6 @@
 # Establish ssh connection to the instances in the private subnets
 # Download updates for the private instances
 
-### provider block......
-provider "aws" {
-  region  = "us-east-1"
-  profile = "josh"
-}
 
 locals {
   vpc_cidr             = "10.0.0.0/16"
